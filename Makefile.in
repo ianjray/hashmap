@@ -1,0 +1,70 @@
+.POSIX:
+.SUFFIXES:
+.SUFFIXES: .c .o
+
+VERSION    = 1.0.0
+
+CC         = @CC@
+CCOV       = gcov
+CFLAGS     = @CFLAGS@
+CFLAGS_COV = @CFLAGS_COV@
+CFLAGS_SAN = @CFLAGS_SAN@
+INCLUDEDIR = @PREFIX@/include
+LD         = @LD@
+LIBS       = @LIBS@
+LIBDIR     = @PREFIX@/lib
+PREFIX     = @PREFIX@
+
+.PHONY: all
+all: libhashmap.a test_readme hashmap.coverage
+
+libhashmap.a: hashmap.o
+	$(LD) -r $^ -o $@
+
+.c.o:
+	$(CC) $(CFLAGS) -c $^ -o $@
+
+test_readme: README.md libhashmap.a
+	awk '/```c/{ C=1; next } /```/{ C=0 } C' README.md | sed -e 's#libhashmap/##' > test_readme.c
+	$(CC) $(CFLAGS) $(CFLAGS_SAN) $(LIBS) -I. test_readme.c hashmap.c -o $@
+	./$@
+
+hashmap.coverage: hashmap.c test_hashmap.o
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) -c hashmap.c -o hashmap.uto
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) $(LIBS) hashmap.uto test_hashmap.o -o $@
+	./$@
+	$(CCOV) hashmap.c
+	! grep "#####" hashmap.c.gcov |grep -ve "// UNREACHABLE$$"
+
+libhashmap.pc:
+	( echo 'Name: libhashmap' ;\
+	echo 'Version: $(VERSION)' ;\
+	echo 'Description: Hash Map Implementation in C' ;\
+	echo 'prefix=$(PREFIX)' ;\
+	echo 'exec_prefix=$${prefix}' ;\
+	echo 'includedir=$${prefix}/include' ;\
+	echo 'libdir=$${prefix}/lib' ;\
+	echo 'Cflags: -I$${includedir}' ;\
+	echo 'Libs: -L$${libdir} -lhashmap' ) > $@
+
+.PHONY: install
+install: hashmap.h libhashmap.a libhashmap.pc
+	mkdir -p $(INCLUDEDIR)/libhashmap
+	mkdir -p $(LIBDIR)/pkgconfig
+	install -m644 hashmap.h $(INCLUDEDIR)/libhashmap/hashmap.h
+	install -m644 libhashmap.a $(LIBDIR)/libhashmap.a
+	install -m644 libhashmap.pc $(LIBDIR)/pkgconfig/libhashmap.pc
+
+.PHONY: uninstall
+uninstall:
+	rm -f $(INCLUDEDIR)/libhashmap/hashmap.h
+	rm -f $(LIBDIR)/libhashmap.a
+	rm -f $(LIBDIR)/pkgconfig/libhashmap.pc
+
+.PHONY: clean
+clean:
+	rm -rf libhashmap.a libhashmap.pc *.o *.uto *.gc?? test_readme* *.coverage
+
+.PHONY: distclean
+distclean: clean
+	rm -f Makefile config.status
